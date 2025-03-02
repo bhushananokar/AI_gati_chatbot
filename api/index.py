@@ -1,11 +1,36 @@
 # File: api/index.py
-from flask import Flask, request, jsonify, Response
-import os
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 import json
 import urllib.request
 import urllib.error
+import os
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 
-app = Flask(__name__)
+app = FastAPI()
+
+# Enable CORS for frontend development
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Define request/response models
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: List[Message] = []
+
+class ChatResponse(BaseModel):
+    response: str
 
 # Initialize OpenAI API key
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
@@ -999,32 +1024,33 @@ def get_openai_response(prompt, history):
     except Exception as e:
         return f"I apologize, but I'm having trouble connecting to my knowledge service. Error: {str(e)}"
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Health check endpoint to verify the API is running"""
-    return jsonify({"status": "ok"})
-
-@app.route('/', methods=['GET'])
-def home():
+@app.get("/")
+async def get_homepage(request: Request):
     """Serve the homepage"""
-    return Response(HTML_TEMPLATE, mimetype='text/html')
+    return HTMLResponse(content=HTML_TEMPLATE)
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint to verify the API is running"""
+    return {"status": "ok"}
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_endpoint(chat_request: ChatRequest):
     """Chat endpoint"""
     try:
-        # Parse request data
-        data = request.json
-        user_message = data.get('message', '')
-        history = data.get('history', [])
+        # Get user message
+        user_message = chat_request.message
+        
+        # Convert Pydantic model to dict for history
+        history = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
         
         # Get response from OpenAI
         response = get_openai_response(user_message, history)
         
-        # Return the response
-        return jsonify({"response": response})
+        # Return response
+        return {"response": response}
     except Exception as e:
-        return jsonify({"response": f"An error occurred: {str(e)}"}), 500
-
-# Vercel requires a WSGI application
-app.debug = False
+        return JSONResponse(
+            status_code=500,
+            content={"response": f"An error occurred: {str(e)}"}
+        )
