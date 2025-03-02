@@ -1,2 +1,5 @@
-# File: requirements.txt
-flask==2.0.1
+fastapi==0.68.0
+uvicorn==0.15.0
+pydantic==1.8.2
+python-multipart==0.0.5
+starlette==0.14.2
