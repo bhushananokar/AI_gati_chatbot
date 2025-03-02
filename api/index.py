@@ -1,41 +1,9 @@
 # File: api/index.py
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-import json
-import urllib.request
-import urllib.error
-import os
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from flask import Flask, request, jsonify
 
-app = FastAPI()
+app = Flask(__name__)
 
-# Enable CORS for frontend development
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Define request/response models
-class Message(BaseModel):
-    role: str
-    content: str
-
-class ChatRequest(BaseModel):
-    message: str
-    history: List[Message] = []
-
-class ChatResponse(BaseModel):
-    response: str
-
-# Initialize OpenAI API key
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
-
-# HTML template - replace this comment with your full HTML from the original code
+# HTML template - replace this with your full HTML
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -715,7 +683,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         Nutrition advice
                     </div>
                     <div class="chip">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#0088ff" viewBox="0 0 16 16">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16
+                        " fill="#0088ff" viewBox="0 0 16 16">
                             <path d="M8 9.783v2.734l-.088-.047c-.437.289-.477.373-.77.25-.324-.14-.227-.432-.073-.615.49-.401-.204-1.003-1.132-1.256-.928-.253-1.382-.829-.818-1.256.564-.426 2.036-.194 2.254.272.218.466.35.53.638.7.288.17.457-.018.485-.168s.037-.286-.037-.376c-.073-.09-.164-.234-.54-.234-.376 0-.613.238-.927.882L7 10.134l-.021-.339A1.298 1.298 0 0 0 6.5 8.5c0-.497.183-.966.513-1.324a1.773 1.773 0 0 1 1.287-.662c.773 0 1.356.32 1.764.863.568.759.514 1.595.408 2.126-.396 2.014-1.357 2.235-1.972 2.543-.206.103-.738.485-.79.709-.051.224.019.495.14.557.126.062.482-.07.696-.154.337-.131.774-.272 1.656-.797l.797.483c.532-.32 1.02-.683 1.324-1.109 1.324-1.853.884-5.27-1.15-4.628-.713.228-1.25.78-1.653 1.28h.001Z"/>
                             <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0ZM1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8Z"/>
                         </svg>
@@ -988,6 +957,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </body>
 </html>"""
 
+import os
+import json
+import urllib.request
+import urllib.error
+
+# Initialize OpenAI API key with fallback
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
+
 def get_openai_response(prompt, history):
     """Custom function to get OpenAI response using direct HTTP request"""
     try:
@@ -1024,33 +1001,32 @@ def get_openai_response(prompt, history):
     except Exception as e:
         return f"I apologize, but I'm having trouble connecting to my knowledge service. Error: {str(e)}"
 
-@app.get("/")
-async def get_homepage(request: Request):
+@app.route('/')
+def home():
     """Serve the homepage"""
-    return HTMLResponse(content=HTML_TEMPLATE)
+    return HTML_TEMPLATE
 
-@app.get("/api/health")
-async def health_check():
+@app.route('/api/health', methods=['GET'])
+def health_check():
     """Health check endpoint to verify the API is running"""
-    return {"status": "ok"}
+    return jsonify({"status": "ok"})
 
-@app.post("/api/chat", response_model=ChatResponse)
-async def chat_endpoint(chat_request: ChatRequest):
+@app.route('/api/chat', methods=['POST'])
+def chat():
     """Chat endpoint"""
     try:
-        # Get user message
-        user_message = chat_request.message
-        
-        # Convert Pydantic model to dict for history
-        history = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
+        # Parse request data
+        data = request.json
+        user_message = data.get('message', '')
+        history = data.get('history', [])
         
         # Get response from OpenAI
         response = get_openai_response(user_message, history)
         
-        # Return response
-        return {"response": response}
+        # Return the response
+        return jsonify({"response": response})
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"response": f"An error occurred: {str(e)}"}
-        )
+        return jsonify({"response": f"An error occurred: {str(e)}"}), 500
+
+# This makes the app compatible with Vercel
+app.debug = False
