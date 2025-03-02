@@ -1,9 +1,8 @@
 # File: api/index.py
-from fastapi import FastAPI, Request, Body
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-import openai
-from typing import List, Dict, Any
 import os
+from typing import List
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -33,19 +32,29 @@ class ChatResponse(BaseModel):
 # Initialize OpenAI API key
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
 
-# Create OpenAI client
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
+# Create OpenAI client using a different approach to avoid the proxies issue
+# We'll import OpenAI only when needed, not at the module level
 def get_openai_response(prompt, history):
     """
     Fetches a response from OpenAI's API with a given prompt and conversation history.
     """
-    messages = history + [{"role": "user", "content": prompt}]
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages
-    )
-    return response.choices[0].message.content
+    try:
+        # Import here to handle initialization differently
+        import openai
+        
+        # Create a client without any extra parameters that might cause conflicts
+        client = openai.OpenAI(
+            api_key=OPENAI_API_KEY
+        )
+        
+        messages = history + [{"role": "user", "content": prompt}]
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"I'm sorry, I encountered an error: {str(e)}"
 
 # HTML template - replace this comment with your full HTML from the original code
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -1004,6 +1013,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 @app.get("/")
 async def get_homepage(request: Request):
     return HTMLResponse(content=HTML_TEMPLATE)
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint to verify the API is running"""
+    return {"status": "ok"}
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(chat_request: ChatRequest):
