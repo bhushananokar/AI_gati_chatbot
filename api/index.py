@@ -2,6 +2,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 import os
+import json
+import httpx
 from typing import List
 from pydantic import BaseModel
 
@@ -32,29 +34,39 @@ class ChatResponse(BaseModel):
 # Initialize OpenAI API key
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
 
-# Create OpenAI client using a different approach to avoid the proxies issue
-# We'll import OpenAI only when needed, not at the module level
-def get_openai_response(prompt, history):
-    """
-    Fetches a response from OpenAI's API with a given prompt and conversation history.
-    """
+async def get_openai_response(prompt, history):
+    """Custom function to get OpenAI response using direct HTTP request"""
     try:
-        # Import here to handle initialization differently
-        import openai
-        
-        # Create a client without any extra parameters that might cause conflicts
-        client = openai.OpenAI(
-            api_key=OPENAI_API_KEY
-        )
-        
+        # Prepare the data to send to OpenAI API
         messages = history + [{"role": "user", "content": prompt}]
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages
-        )
-        return response.choices[0].message.content
+        
+        data = {
+            "model": "gpt-4",
+            "messages": messages
+        }
+
+        # Set up the headers
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
+
+        # Make a direct request to the OpenAI API
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=data
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
+            else:
+                return f"Error {response.status_code}: {response.text}"
+            
     except Exception as e:
-        return f"I'm sorry, I encountered an error: {str(e)}"
+        return f"I apologize, but I'm having trouble connecting to my knowledge service. Please try again in a moment."
 
 # HTML template - replace this comment with your full HTML from the original code
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -1027,8 +1039,8 @@ async def chat_endpoint(chat_request: ChatRequest):
     # Convert Pydantic model to dict for history
     history = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
     
-    # Get response from OpenAI
-    response = get_openai_response(user_message, history)
+    # Get response using our custom OpenAI implementation
+    response = await get_openai_response(user_message, history)
     
     # Return response
     return {"response": response}
