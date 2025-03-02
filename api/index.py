@@ -1,72 +1,14 @@
 # File: api/index.py
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from flask import Flask, request, jsonify, Response
 import os
 import json
-import httpx
-from typing import List
-from pydantic import BaseModel
+import urllib.request
+import urllib.error
 
-app = FastAPI()
-
-# Enable CORS for frontend development
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Define request/response models
-class Message(BaseModel):
-    role: str
-    content: str
-
-class ChatRequest(BaseModel):
-    message: str
-    history: List[Message] = []
-
-class ChatResponse(BaseModel):
-    response: str
+app = Flask(__name__)
 
 # Initialize OpenAI API key
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
-
-async def get_openai_response(prompt, history):
-    """Custom function to get OpenAI response using direct HTTP request"""
-    try:
-        # Prepare the data to send to OpenAI API
-        messages = history + [{"role": "user", "content": prompt}]
-        
-        data = {
-            "model": "gpt-4",
-            "messages": messages
-        }
-
-        # Set up the headers
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {OPENAI_API_KEY}"
-        }
-
-        # Make a direct request to the OpenAI API
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=data
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result["choices"][0]["message"]["content"]
-            else:
-                return f"Error {response.status_code}: {response.text}"
-            
-    except Exception as e:
-        return f"I apologize, but I'm having trouble connecting to my knowledge service. Please try again in a moment."
 
 # HTML template - replace this comment with your full HTML from the original code
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -1021,26 +963,68 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </body>
 </html>"""
 
-# Define API routes
-@app.get("/")
-async def get_homepage(request: Request):
-    return HTMLResponse(content=HTML_TEMPLATE)
+def get_openai_response(prompt, history):
+    """Custom function to get OpenAI response using direct HTTP request"""
+    try:
+        # Prepare the data to send to OpenAI API
+        messages = history + [{"role": "user", "content": prompt}]
+        
+        data = {
+            "model": "gpt-4",
+            "messages": messages
+        }
 
-@app.get("/api/health")
-async def health_check():
+        # Convert data to JSON
+        json_data = json.dumps(data).encode('utf-8')
+        
+        # Set up the request
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
+        
+        # Create the request
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=json_data,
+            headers=headers,
+            method="POST"
+        )
+        
+        # Make the request
+        with urllib.request.urlopen(req, timeout=30) as response:
+            response_data = json.loads(response.read().decode('utf-8'))
+            return response_data["choices"][0]["message"]["content"]
+            
+    except Exception as e:
+        return f"I apologize, but I'm having trouble connecting to my knowledge service. Error: {str(e)}"
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
     """Health check endpoint to verify the API is running"""
-    return {"status": "ok"}
+    return jsonify({"status": "ok"})
 
-@app.post("/api/chat", response_model=ChatResponse)
-async def chat_endpoint(chat_request: ChatRequest):
-    # Get user message
-    user_message = chat_request.message
-    
-    # Convert Pydantic model to dict for history
-    history = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
-    
-    # Get response using our custom OpenAI implementation
-    response = await get_openai_response(user_message, history)
-    
-    # Return response
-    return {"response": response}
+@app.route('/', methods=['GET'])
+def home():
+    """Serve the homepage"""
+    return Response(HTML_TEMPLATE, mimetype='text/html')
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """Chat endpoint"""
+    try:
+        # Parse request data
+        data = request.json
+        user_message = data.get('message', '')
+        history = data.get('history', [])
+        
+        # Get response from OpenAI
+        response = get_openai_response(user_message, history)
+        
+        # Return the response
+        return jsonify({"response": response})
+    except Exception as e:
+        return jsonify({"response": f"An error occurred: {str(e)}"}), 500
+
+# Vercel requires a WSGI application
+app.debug = False
