@@ -963,7 +963,7 @@ import urllib.request
 import urllib.error
 
 # Initialize OpenAI API key with fallback
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 def get_openai_response(prompt, history):
     """Custom function to get OpenAI response using direct HTTP request"""
